@@ -31,6 +31,7 @@ var _score_bar: Control
 
 # ─── State ───────────────────────────────────────────────────────────────────
 var _phase: String = "intro"  # intro | statement | judge | voting | verdict
+var _intro_done := false  # guard against double _begin_statement_phase
 var _statement_timer := 0.0
 var _statement_duration := 60.0
 var _timer_active := false
@@ -50,6 +51,7 @@ const COLORS := [Color(0.95,0.3,0.3), Color(0.3,0.5,0.95), Color(0.3,0.85,0.4),
 func _ready() -> void:
 	_build_3d_scene()
 	_build_ui()
+	GameManager.scores_updated.connect(func(_s): _refresh_score_bar())
 	await get_tree().create_timer(0.3).timeout
 	_start_case_intro()
 
@@ -450,11 +452,12 @@ func _start_case_intro() -> void:
 		_case_data.get("title", ""),
 		_case_data.get("accusation", "")
 	])
-
-	await get_tree().create_timer(5.0).timeout
-	_begin_statement_phase()
+	# Button on case panel handles the transition — no auto-advance here
 
 func _begin_statement_phase() -> void:
+	if _intro_done and _phase == "intro":
+		return  # already transitioning
+	_intro_done = true
 	_phase = "statement"
 	GameManager.change_state(GameManager.GameState.STATEMENT_PHASE)
 
@@ -476,8 +479,10 @@ func _begin_statement_phase() -> void:
 	AudioMgr.play_swoosh()
 
 func _on_statement_submitted() -> void:
-	if not _timer_active and _statement_timer > 0:
-		return
+	if _phase != "statement":
+		return  # only accept during statement phase
+	if _submit_btn.disabled:
+		return  # already submitted
 	_timer_active = false
 	_statement_input.editable = false
 	_submit_btn.disabled = true
@@ -669,7 +674,10 @@ func _build_case_panel(parent: Control) -> void:
 	cont_btn.add_theme_font_size_override("font_size", 28)
 	cont_btn.custom_minimum_size.y = 80
 	cont_btn.pressed.connect(func():
+		if _intro_done:
+			return
 		_case_panel.visible = false
+		_hide_judge_bubble()
 		_begin_statement_phase()
 	)
 	vbox.add_child(cont_btn)
@@ -978,10 +986,7 @@ func _refresh_score_bar() -> void:
 		list.add_child(row)
 
 func _update_score_anims(_delta: float) -> void:
-	if GameManager.players.is_empty():
-		return
-	# Refresh score bar every frame (cheap labels)
-	_refresh_score_bar()
+	pass  # score bar updated only on score change
 
 # ─── Mesh Helpers ─────────────────────────────────────────────────────────────
 
