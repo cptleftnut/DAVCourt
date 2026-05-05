@@ -1,111 +1,124 @@
-name: 🎮 Build Android APK
-
-on:
+name: Build Android APK
+'on':
   push:
-    branches: [main]
-  workflow_dispatch:
-
+    branches:
+    - main
+  workflow_dispatch: null
 env:
-  GODOT_VERSION: "4.3"
-  GODOT_RELEASE: "stable"
-  EXPORT_NAME: "SnoopDoggRetssal"
-
+  GODOT_VERSION: '4.3'
+  GODOT_RELEASE: stable
+  EXPORT_NAME: SnoopDoggRetssal
 jobs:
   build-android:
     name: Build Android APK
     runs-on: ubuntu-latest
-
     steps:
-      - name: 📥 Checkout Repository
-        uses: actions/checkout@v4
+    - name: Checkout
+      uses: actions/checkout@v4
+    - name: Setup Java 17
+      uses: actions/setup-java@v4
+      with:
+        distribution: temurin
+        java-version: '17'
+    - name: Setup Android SDK
+      uses: android-actions/setup-android@v3
+    - name: Install Android Components
+      run: 'sdkmanager --sdk_root=$ANDROID_SDK_ROOT   "build-tools;34.0.0"   "platform-tools"   "platforms;android-34"   "ndk;23.2.8568313"
+        || true
 
-      - name: ☕ Setup Java 17
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: "17"
+        echo "ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/23.2.8568313" >> $GITHUB_ENV
 
-      - name: 🤖 Setup Android SDK
-        uses: android-actions/setup-android@v3
+        '
+    - name: Download Godot 4.3
+      run: 'wget -q "https://github.com/godotengine/godot/releases/download/4.3-stable/Godot_v4.3-stable_linux.x86_64.zip"
+        -O godot.zip
 
-      - name: 📦 Install Android Components
-        run: |
-          sdkmanager --sdk_root=$ANDROID_SDK_ROOT \
-            "build-tools;34.0.0" \
-            "platform-tools" \
-            "platforms;android-34" \
-            "ndk;23.2.8568313"
+        unzip -q godot.zip
 
-          echo "ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/23.2.8568313" >> $GITHUB_ENV
+        sudo mv Godot_v4.3-stable_linux.x86_64 /usr/local/bin/godot
 
-      - name: 🎮 Install Godot
-        run: |
-          wget -q https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-${GODOT_RELEASE}/Godot_v${GODOT_VERSION}-${GODOT_RELEASE}_linux.x86_64.zip -O godot.zip
-          unzip -q godot.zip
-          sudo mv Godot_v${GODOT_VERSION}-${GODOT_RELEASE}_linux.x86_64 /usr/local/bin/godot
-          chmod +x /usr/local/bin/godot
-          godot --version
+        chmod +x /usr/local/bin/godot
 
-      - name: 📋 Install Export Templates
-        run: |
-          mkdir -p ~/.local/share/godot/export_templates/${GODOT_VERSION}.${GODOT_RELEASE}
+        godot --version
 
-          wget -q https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-${GODOT_RELEASE}/Godot_v${GODOT_VERSION}-${GODOT_RELEASE}_export_templates.tpz -O templates.tpz
+        '
+    - name: Download Export Templates
+      run: 'TDIR="$HOME/.local/share/godot/export_templates/4.3.stable"
 
-          unzip -q templates.tpz -d templates
-          mv templates/templates/* ~/.local/share/godot/export_templates/${GODOT_VERSION}.${GODOT_RELEASE}/
+        mkdir -p "$TDIR"
 
-      - name: 🔑 Generate Debug Keystore
-        run: |
-          keytool -genkey -v \
-            -keystore debug.keystore \
-            -alias androiddebugkey \
-            -keyalg RSA -keysize 2048 \
-            -validity 10000 \
-            -storepass android \
-            -keypass android \
-            -dname "CN=Debug,O=DAVCourt,C=DK"
+        wget -q "https://github.com/godotengine/godot/releases/download/4.3-stable/Godot_v4.3-stable_export_templates.tpz"
+        -O templates.tpz
 
-      - name: ⚙️ Configure Godot Editor Settings
-        run: |
-          mkdir -p ~/.config/godot
+        unzip -q templates.tpz -d /tmp/godot_templates
 
-          cat <<EOF > ~/.config/godot/editor_settings-4.tres
-[gd_resource type="EditorSettings" format=3]
+        mv /tmp/godot_templates/templates/* "$TDIR/"
 
-[resource]
-export/android/android_sdk_path="$ANDROID_SDK_ROOT"
-export/android/android_ndk_path="$ANDROID_SDK_ROOT/ndk/23.2.8568313"
-export/android/debug_keystore="$(pwd)/debug.keystore"
-export/android/debug_keystore_user="androiddebugkey"
-export/android/debug_keystore_pass="android"
-export/android/force_system_user=false
-export/android/shutdown_adb_on_exit=true
-export/android/one_click_deploy_clear_previous_install=false
-EOF
+        ls "$TDIR/" | grep android || echo "No android templates found"
 
-      - name: 🏗️ Build APK
-        run: |
-          mkdir -p build/android
+        '
+    - name: Generate Debug Keystore
+      run: 'keytool -genkey -v -keystore debug.keystore -alias androiddebugkey   -keyalg
+        RSA -keysize 2048 -validity 10000   -storepass android -keypass android   -dname
+        "CN=Debug,O=DAVCourt,C=DK"
 
-          godot --headless --verbose \
-            --export-debug "Android" \
-            build/android/${EXPORT_NAME}.apk
+        '
+    - name: Configure Godot Editor Settings
+      run: 'mkdir -p ~/.config/godot
 
-          ls -lh build/android/
+        SDK="$ANDROID_SDK_ROOT"
 
-      - name: 📤 Upload APK Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: android-apk
-          path: build/android/${{ env.EXPORT_NAME }}.apk
+        KS="$(pwd)/debug.keystore"
 
-      - name: 🚀 Create GitHub Release
-        if: github.ref == 'refs/heads/main'
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: v1.0.${{ github.run_number }}
-          name: Build ${{ github.run_number }}
-          files: build/android/${{ env.EXPORT_NAME }}.apk
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        OUT=~/.config/godot/editor_settings-4.tres
+
+        printf ''[gd_resource type="EditorSettings" format=3]\n\n[resource]\n'' >
+        "$OUT"
+
+        printf ''export/android/android_sdk_path = "%s"\n'' "$SDK" >> "$OUT"
+
+        printf ''export/android/android_ndk_path = "%s/ndk/23.2.8568313"\n'' "$SDK"
+        >> "$OUT"
+
+        printf ''export/android/debug_keystore = "%s"\n'' "$KS" >> "$OUT"
+
+        printf ''export/android/debug_keystore_user = "androiddebugkey"\n'' >> "$OUT"
+
+        printf ''export/android/debug_keystore_pass = "android"\n'' >> "$OUT"
+
+        printf ''export/android/force_system_user = false\n'' >> "$OUT"
+
+        printf ''export/android/shutdown_adb_on_exit = true\n'' >> "$OUT"
+
+        cat "$OUT"
+
+        '
+    - name: Build Android APK
+      run: "mkdir -p build/android\ngodot --headless --verbose --export-debug \"Android\"\
+        \ \"build/android/$EXPORT_NAME.apk\" 2>&1 || true\nif [ -f \"build/android/$EXPORT_NAME.apk\"\
+        \ ]; then\n  echo \"APK built OK\"\n  ls -lh \"build/android/$EXPORT_NAME.apk\"\
+        \nelse\n  echo \"APK not found\"\n  ls -la build/android/ || true\n  exit\
+        \ 1\nfi\n"
+    - name: Upload APK
+      uses: actions/upload-artifact@v4
+      with:
+        name: SnoopDoggRetssal-${{ github.run_number }}
+        path: build/android/SnoopDoggRetssal.apk
+        if-no-files-found: error
+    - name: Create Release
+      if: github.ref == 'refs/heads/main'
+      uses: softprops/action-gh-release@v2
+      with:
+        tag_name: v1.0.${{ github.run_number }}
+        name: Snoop Doggs Retssal v1.0.${{ github.run_number }}
+        body: 'Snoop Doggs Kaotiske Retssal - Automatisk bygget APK.
+
+
+          Installation: Download APK, aktiver ''Ukendte kilder'' i Android, installer.
+
+          Tilfoej din Anthropic API-nogle i spillet for fuld AI-oplevelse. Fo shizzle!'
+        files: build/android/SnoopDoggRetssal.apk
+        draft: false
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
