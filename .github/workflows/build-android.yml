@@ -1,0 +1,143 @@
+name: 🎮 Build Android APK
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  GODOT_VERSION: "4.3"
+  GODOT_RELEASE: "stable"
+  EXPORT_NAME: "SnoopDoggRetssal"
+
+jobs:
+  build-android:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📥 Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: ☕ Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: 🤖 Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: 📦 Install Android Components
+        run: |
+          sdkmanager --sdk_root=$ANDROID_SDK_ROOT \
+            "build-tools;34.0.0" \
+            "platform-tools" \
+            "platforms;android-34" \
+            "ndk;23.2.8568313" || true
+          echo "ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/23.2.8568313" >> $GITHUB_ENV
+
+      - name: 🎮 Download Godot ${{ env.GODOT_VERSION }}
+        run: |
+          wget -q "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-${GODOT_RELEASE}/Godot_v${GODOT_VERSION}-${GODOT_RELEASE}_linux.x86_64.zip" -O godot.zip
+          unzip -q godot.zip
+          sudo mv "Godot_v${GODOT_VERSION}-${GODOT_RELEASE}_linux.x86_64" /usr/local/bin/godot
+          chmod +x /usr/local/bin/godot
+          echo "✅ Godot $(godot --version) ready"
+
+      - name: 📋 Download Export Templates
+        run: |
+          TEMPLATES_DIR="$HOME/.local/share/godot/export_templates/${GODOT_VERSION}.${GODOT_RELEASE}"
+          mkdir -p "$TEMPLATES_DIR"
+          wget -q "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-${GODOT_RELEASE}/Godot_v${GODOT_VERSION}-${GODOT_RELEASE}_export_templates.tpz" -O templates.tpz
+          unzip -q templates.tpz -d /tmp/godot_templates
+          mv /tmp/godot_templates/templates/* "$TEMPLATES_DIR/"
+          echo "✅ Export templates installed at $TEMPLATES_DIR"
+          ls "$TEMPLATES_DIR/" | grep android || echo "Warning: no android templates found"
+
+      - name: 🔑 Generate Debug Keystore
+        run: |
+          keytool -genkey -v \
+            -keystore debug.keystore \
+            -alias androiddebugkey \
+            -keyalg RSA -keysize 2048 \
+            -validity 10000 \
+            -storepass android \
+            -keypass android \
+            -dname "CN=Snoop Debug,O=DAVCourt,C=DK"
+          echo "✅ Keystore generated"
+
+      - name: ⚙️ Configure Godot Editor Settings
+        run: |
+          mkdir -p "$HOME/.config/godot"
+          SDK_PATH="$ANDROID_SDK_ROOT"
+          NDK_PATH="$SDK_PATH/ndk/23.2.8568313"
+          cat > "$HOME/.config/godot/editor_settings-4.tres" << EOF
+[gd_resource type="EditorSettings" format=3]
+
+[resource]
+export/android/android_sdk_path = "$SDK_PATH"
+export/android/debug_keystore = "$(pwd)/debug.keystore"
+export/android/debug_keystore_user = "androiddebugkey"
+export/android/debug_keystore_pass = "android"
+export/android/force_system_user = false
+export/android/shutdown_adb_on_exit = true
+export/android/one_click_deploy_clear_previous_install = false
+EOF
+          echo "✅ Editor settings configured"
+          cat "$HOME/.config/godot/editor_settings-4.tres"
+
+      - name: 🏗️ Build Android APK
+        run: |
+          mkdir -p build/android
+          echo "Starting export..."
+          godot --headless --verbose --export-debug "Android" "build/android/${EXPORT_NAME}.apk" 2>&1 || true
+          
+          # Check if APK was produced
+          if [ -f "build/android/${EXPORT_NAME}.apk" ]; then
+            echo "✅ APK built successfully!"
+            ls -lh "build/android/${EXPORT_NAME}.apk"
+          else
+            echo "❌ APK not found, checking for errors..."
+            ls -la build/android/ || echo "Build dir empty"
+            exit 1
+          fi
+
+      - name: 📤 Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: "${{ env.EXPORT_NAME }}-android-build-${{ github.run_number }}"
+          path: "build/android/${{ env.EXPORT_NAME }}.apk"
+          if-no-files-found: error
+
+      - name: 🚀 Create GitHub Release
+        if: github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: "v1.0.${{ github.run_number }}"
+          name: "🎉 Snoop Doggs Retssal v1.0.${{ github.run_number }}"
+          body: |
+            ## 🧑‍⚖️🌿 Snoop Dogg's Kaotiske Retssal
+            
+            **Build ${{ github.run_number }}** — Automatisk bygget og klar til installation!
+            
+            ### 📱 Installation
+            1. Download `SnoopDoggRetssal.apk` nedenfor
+            2. Aktiver "Installer fra ukendte kilder" i Android-indstillinger
+            3. Åbn APK-filen og installer
+            4. Indtast din Anthropic API-nøgle i indstillinger for fuld AI-oplevelse
+            
+            ### 🎮 Sådan spiller du
+            - 2-6 spillere på samme sted
+            - Vælg antal spillere og indtast navne
+            - Snoop Dogg uddeler absurde retssager
+            - Fremfør dine vildeste forsvar!
+            - AI-dommer Snoop Dogg reagerer på alt
+            
+            ---
+            *Det ultimative AI-drevne selskabsspil* 🌿
+          files: "build/android/${{ env.EXPORT_NAME }}.apk"
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,0 +1,41 @@
+; Engine configuration file.
+; It's best edited using the editor.
+; https://docs.godotengine.org/en/stable/tutorials/export/exporting_projects.html
+
+config_version=5
+
+[application]
+
+config/name="Snoop Doggs Kaotiske Retssal"
+config/description="Det ultimative AI-drevne selskabsspil med Dommer Snoop Dogg"
+run/main_scene="res://scenes/Main.tscn"
+config/features=PackedStringArray("4.3", "Mobile")
+config/icon="res://assets/icon.svg"
+
+[audio]
+
+driver/enable_input=true
+
+[autoload]
+
+GameManager="*res://scripts/autoload/GameManager.gd"
+JudgeAI="*res://scripts/autoload/JudgeAI.gd"
+CaseGenerator="*res://scripts/autoload/CaseGenerator.gd"
+AudioMgr="*res://scripts/autoload/AudioManager.gd"
+SceneTransition="*res://scripts/autoload/SceneTransition.gd"
+
+[display]
+
+window/size/viewport_width=1080
+window/size/viewport_height=1920
+window/size/mode=0
+window/stretch/mode="canvas_items"
+window/stretch/aspect="expand"
+window/handheld/orientation=1
+
+[rendering]
+
+renderer/rendering_method="mobile"
+renderer/rendering_method.mobile="gl_compatibility"
+textures/vram_compression/import_etc2_astc=true
+environment/defaults/default_clear_color=Color(0.05, 0.03, 0.08, 1)
